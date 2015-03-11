@@ -1,0 +1,13 @@
+{
+  "name": "th/imageresizer",
+  "description": "Small library to resize images",
+  "require": {
+    "php": ">=5.0.0",
+    "ext-imagick": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Th\\ImageResizer\\": "src"
+    }
+  }
+}
