@@ -59,7 +59,7 @@ class ImageResizer {
         }
         
         // create a new Imagick file object
-        $img = new Imagick($this->file());
+        $img = new \Imagick($this->file());
         
         // if the resize operation is a crop operation and the height is set,
         // crop the image, otherwhise scale the image
