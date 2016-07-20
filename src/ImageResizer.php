@@ -3,35 +3,35 @@ namespace Th\ImageResizer;
 
 /**
  * Class that can be used to get the dimensions of an image
- * 
+ *
  * @author Thomas Marinissen
  */
 class ImageResizer {
-    
+
     /**
      * The image properties
-     * 
+     *
      * @var array|null
      */
     private $imageProperties = null;
-    
+
     /**
      * The maximum width when resizing
-     * 
+     *
      * @var int
      */
     private $maxWidth;
-    
+
     /**
      * The maximum height when resizing
-     * 
+     *
      * @var int
      */
     private $maxHeight;
-    
+
     /**
      * Constructor
-     * 
+     *
      * @param string                The file path
      * @param int                   The maximum image width (when resizing)
      * @param int                   The maxium image height (when resizing)
@@ -41,10 +41,10 @@ class ImageResizer {
         $this->maxWidth = $maxWidth;
         $this->maxHeight = $maxHeight;
     }
-    
+
     /**
      * Resize the image
-     * 
+     *
      * @param   string                  The destination where to save the resized image
      * @param   int                     The resized image width
      * @param   int                     The resized image height
@@ -57,33 +57,24 @@ class ImageResizer {
         if (!$this->canResize($width, $height)) {
             return false;
         }
-        
+
         // create a new Imagick file object
         $img = new \Imagick($this->file());
-        
-        // if the resize operation is a crop operation and the height is set,
-        // crop the image, otherwhise scale the image
-        if ($crop && !is_null($height)) {
-            // crop the image
-            $img->cropThumbnailImage($width, $height);
+
+        // resize the image based on the type
+        if ($this->isGif()) {
+            $img = $this->resizeGif($img, $width, $height, $crop);
+            $img->writeImages($destination, true);
         } else {
-            // calculate the height
-            $height = round($width / $this->ratio());
-            
-            // scale the image
-            $img->scaleImage($width, $height, true);
+            $img = $this->resizeOther($img, $width, $height, $crop);
+            $img->stripImage();
+            $img->writeImage($destination);
         }
-        
-        // remove all the meta data from the image
-        $img->stripImage();
-        
-        // save the resized image
-        $img->writeImage($destination);
     }
-    
+
     /**
      * Create a thumbnail of the image
-     * 
+     *
      * @param   string                  The destination where to save the resized image
      * @param   int                     The resized image width
      * @param   int                     The resized image height
@@ -93,84 +84,147 @@ class ImageResizer {
         // create the thumbnail
         return $this->resize($destination, $width, $height, true);
     }
-    
+
     /**
      * Get the image file path
-     * 
+     *
      * @return string
      */
     public function file() {
         return $this->file;
     }
-    
+
     /**
      * Get the image width
-     * 
+     *
      * @return int          The image width
      */
     public function width() {
         // get the image properties
         $imageProperties = $this->imageProperties();
-        
+
         // return the width
         return $imageProperties[0];
     }
-    
+
     /**
      * Get the image height
-     * 
+     *
      * @return int          The image height
      */
     public function height() {
         // get the image properties
         $imageProperties = $this->imageProperties();
-        
+
         // return the height
         return $imageProperties[1];
     }
-    
+
     /**
      * Calculate the image ration (width / height)
-     * 
+     *
      * @return float                    The image ratio
      */
     public function ratio() {
         return $this->width() / $this->height();
     }
-    
+
+    /**
+     * Return whether the image is a gif image or not
+     *
+     * @return boolean              Whether the image is a gif image or not
+     */
+    public function isGif() {
+        return $this->imageType() == IMAGETYPE_GIF;
+    }
+
+    /**
+     * Resize a gif image keeping the animation
+     *
+     * @param   \Imagick                The image resource to resize
+     * @param   int                     The resized image width
+     * @param   int                     The resized image height
+     * @param   boolean                 Should the image be cropped
+     *
+     * @return \Imagick                 The image resource
+     */
+    protected function resizeGif(\Imagick $image, $width, $height = null, $crop = false) {
+        // get the image frames
+        $frames = $image->coalesceImages();
+
+        // resize every frame
+        foreach ($frames as $frame) {
+            $this->resizeOther($frame, $width, $height, $crop);
+        }
+
+        // deconstruct the images
+        $image = $frames->deconstructImages();
+
+        // return the image
+        return $image;
+    }
+
+    /**
+     * Resize an image
+     *
+     * @param   \Imagick                The image resource to resize
+     * @param   int                     The resized image width
+     * @param   int                     The resized image height
+     * @param   boolean                 Should the image be cropped
+     *
+     * @return \Imagick                 The image resource
+     */
+    protected function resizeOther(\Imagick $image, $width, $height = null, $crop = false) {
+        // if the resize operation is a crop operation and the height is set,
+        // crop the image, otherwhise scale the image
+        if ($crop && !is_null($height)) {
+            // crop the image
+            $image->cropThumbnailImage($width, $height);
+        } else {
+            // calculate the height
+            $height = round($width / $this->ratio());
+
+            // scale the image
+            $image->scaleImage($width, $height, true);
+        }
+
+        // done, return the image
+        return $image;
+    }
+
     /**
      * Set the image file
-     * 
+     *
      * @param   string                                      The image file to set
      * @return  \Th\ImageResizer\ImageResizer               The instance of this, to make chaining possible
      *
      * @throws \Exception                                   Thrown if the image is not a valid image, or if the image is not supported
      */
-    private function setFile($file) {
+    protected function setFile($file) {
         // set the initial file
         $this->file = $file;
-        
+
         // check if the file is a valid image
         $this->validImage();
-        
+
         // return the instance of this to make chaining possible
         return $this;
     }
-    
+
     /**
      * Function to check if the image is valid
-     * 
+     *
      * @return boolean                  Whether an image is a valid image
-     * 
+     *
      * @throws \Exception               Thrown if the image is not a valid image, or if the image is not supported
      */
-    private function validImage() {
+    protected function validImage() {
         // get the image properties
         $imageProperties = $this->imageProperties();
-        
+
         // get the image type
         $imageType = $imageProperties[2];
-        
+
         // if the image type is not one of the supported image types, throw a
         // new exception
         if (!in_array($imageType , array(IMAGETYPE_GIF, IMAGETYPE_JPEG, IMAGETYPE_PNG))) {
@@ -180,57 +234,71 @@ class ImageResizer {
         // done, return whether the file is an image and of the supported type
         return in_array($imageType , array(IMAGETYPE_GIF, IMAGETYPE_JPEG, IMAGETYPE_PNG));
     }
-    
+
+    /**
+     * Get the image type
+     *
+     * @return string           The image type
+     * @throws \Exception
+     */
+    protected function imageType() {
+        // get the image properties
+        $imageProperties = $this->imageProperties();
+
+        // get the image type and return it
+        return $imageProperties[2];
+    }
+
     /**
      * Function to get the image properties
-     * 
+     *
      * @return  array           The image properties as an array
-     * 
+     *
      * @throws  \Exception      Thrown whenever the image is not a valid image
      */
-    private function imageProperties() {
+    protected function imageProperties() {
         // if the image properties have been set before, return them
         if (!is_null($this->imageProperties)) {
             return $this->imageProperties;
         }
-        
+
         // get the image properties
         $imageProperties = getimagesize($this->file());
-        
+
         // if there are no image properties, throw a new exception
         if ($imageProperties === false) {
             throw new \Exception('File is not a valid image');
         }
-        
+
         // done, set and return the image properties
         return $this->imageProperties = $imageProperties;
     }
-    
+
     /**
      * Helper function that checks if it is possible to resize an image based on
      * the image widht and height
-     * 
+     *
      * @param   int                 The image width to resize the image to
      * @param   int                 The image height to resize the image to
      * @return  boolean             Whether it is possible to resize the image or not
      */
-    private function canResize($width, $height = null) {
+    protected function canResize($width, $height = null) {
         if ($this->width() >= $width || $this->maxWidth >= $width) {
             return true;
         }
-        
+
         if (is_null($height) || is_null($this->maxHeight)) {
             return true;
         }
-        
+
         // if the height is set and the given height is bigger than the source
         // image height, not possible to resize the image
         if (!is_null($height) && !is_null($this->maxHeight) && $this->maxHeight < $height) {
             return false;
         }
-        
+
         // the image can be resized
-        return true; 
+        return true;
     }
 }
 
